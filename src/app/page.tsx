@@ -11,18 +11,18 @@ export default function Home() {
         {/* BAGIAN HERO (Sambutan Utama) */}
         <div className="space-y-6">
           <div className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 font-bold text-sm mb-4 shadow-sm">
-            ✨ Platform Simulasi CBT Modern
+            ✨ Simulasi Tes Beasiswa SDM Sawit BPDP Tahun 2026
           </div>
 
           <h1 className="text-5xl md:text-6xl lg:text-7xl font-extrabold text-slate-800 tracking-tight leading-tight">
-            Siap Hadapi Ujian dengan <br className="hidden md:block" />
+            Siap Hadapi Tes dengan <br className="hidden md:block" />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600">
               Percaya Diri?
             </span>
           </h1>
 
           <p className="text-lg md:text-xl text-slate-500 max-w-2xl mx-auto font-medium leading-relaxed">
-            Berlatih soal ujian kini jauh lebih menyenangkan. Kerjakan simulasi,
+            Berlatih soal kini jauh lebih menyenangkan. Kerjakan simulasi,
             pantau sisa waktu, dan lihat hasil evaluasimu secara instan.
           </p>
         </div>
@@ -51,7 +51,7 @@ export default function Home() {
               Waktu Real-time
             </h3>
             <p className="text-slate-500 font-medium text-sm leading-relaxed">
-              Latih manajemen waktumu dengan sistem *timer* yang berjalan persis
+              Latih manajemen waktumu dengan sistem timer yang berjalan persis
               seperti ujian aslinya.
             </p>
           </div>
@@ -88,7 +88,7 @@ export default function Home() {
 
       {/* FOOTER */}
       <footer className="absolute bottom-6 text-center text-slate-400 text-sm font-medium w-full">
-        © {new Date().getFullYear()} Simulasi CBT. Siap bantu kamu lulus.
+        © {new Date().getFullYear()} Apkasindo Bengkalis.
       </footer>
     </div>
   );
