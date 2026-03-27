@@ -1,7 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
-import { createClient } from "@/utils/supabase";
+import { createClient } from "@/utils/supabase"; // Pastikan path ini benar
 import { useParams, useRouter } from "next/navigation";
+import TesKoran from "@/components/TesKoran"; // IMPORT KOMPONEN TES KORAN DI SINI
 
 export default function MesinUjian() {
   const { id } = useParams();
@@ -10,45 +11,63 @@ export default function MesinUjian() {
 
   const [soal, setSoal] = useState<any[]>([]);
   const [indeksAktif, setIndeksAktif] = useState(0);
-  const [jawabanSiswa, setJawabanSiswa] = useState<any[]>([]);
+  const [jawabanSiswa, setJawabanSiswa] = useState<Record<string, string>>({});
   const [timer, setTimer] = useState(60);
+
+  // State untuk Info Tes
   const [namaTes, setNamaTes] = useState("");
+  const [kategoriTes, setKategoriTes] = useState(""); // STATE BARU UNTUK KATEGORI
+  const [dataTesLengkap, setDataTesLengkap] = useState<any>(null); // Untuk dilempar ke TesKoran
+
   const [loading, setLoading] = useState(true);
+  const [waktuMulai, setWaktuMulai] = useState<number>(0);
 
   // 1. Fetch Data Awal (Soal & Info Tes)
   useEffect(() => {
     const fetchData = async () => {
-      // Ambil Info Tes untuk Timer
+      // Ambil Info Tes untuk Timer & Kategori (Tambahkan 'kategori' di select)
       const { data: dataTes } = await supabase
         .from("daftar_tes")
-        .select("nama_tes, durasi_menit")
+        .select("nama_tes, durasi_menit, kategori")
         .eq("id", id)
         .single();
 
-      // Ambil Daftar Soal
+      if (dataTes) {
+        setNamaTes(dataTes.nama_tes);
+        setKategoriTes(dataTes.kategori); // Simpan kategori
+        setDataTesLengkap(dataTes); // Simpan seluruh data tes
+
+        // Jika ini tes koran, kita tidak perlu fetch soal pilihan ganda
+        if (dataTes.kategori === "koran") {
+          setLoading(false);
+          return; // Berhenti di sini, biarkan TesKoran yang menangani sisanya
+        }
+
+        const isPsikologi = dataTes.nama_tes
+          .toLowerCase()
+          .includes("psikologi");
+        // Jika Psikologi: 60 detik per soal. Jika Umum: Durasi menit * 60.
+        setTimer(isPsikologi ? 60 : (dataTes.durasi_menit || 30) * 60);
+      }
+
+      // Ambil Daftar Soal (Hanya jika BUKAN tes koran)
       const { data: dataSoal } = await supabase
         .from("soal")
         .select("*")
         .eq("tes_id", id);
 
-      if (dataTes) {
-        setNamaTes(dataTes.nama_tes);
-        const isPsikologi = dataTes.nama_tes
-          .toLowerCase()
-          .includes("psikologi");
-        // Jika Psikologi: 60 detik per soal. Jika Sawit: Durasi menit * 60.
-        setTimer(isPsikologi ? 60 : (dataTes.durasi_menit || 30) * 60);
-      }
-
       if (dataSoal) setSoal(dataSoal);
+
+      // Catat waktu kapan siswa mulai mengerjakan soal
+      setWaktuMulai(Date.now());
       setLoading(false);
     };
     fetchData();
   }, [id, supabase]);
 
-  // 2. Logika Timer Adaptif
+  // 2. Logika Timer Adaptif (Untuk Pilihan Ganda)
   useEffect(() => {
-    if (loading || soal.length === 0) return;
+    if (loading || kategoriTes === "koran" || soal.length === 0) return;
 
     const interval = setInterval(() => {
       setTimer((prev) => {
@@ -75,13 +94,12 @@ export default function MesinUjian() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [indeksAktif, loading, soal, namaTes]);
+  }, [indeksAktif, loading, soal, namaTes, kategoriTes]);
 
-  // 3. Fungsi Navigasi & Simpan
+  // 3. Fungsi Navigasi & Simpan (Untuk Pilihan Ganda)
   const handleNextSoal = () => {
     if (indeksAktif < soal.length - 1) {
       setIndeksAktif(indeksAktif + 1);
-      // Reset timer HANYA jika tes Psikologi
       if (namaTes.toLowerCase().includes("psikologi")) {
         setTimer(60);
       }
@@ -92,8 +110,6 @@ export default function MesinUjian() {
 
   const lompatKeSoal = (indeks: number) => {
     const isPsikologi = namaTes.toLowerCase().includes("psikologi");
-    // Di tes psikologi, biasanya tidak boleh back/lompat.
-    // Tapi jika kamu izinkan, hapus proteksi if ini:
     if (isPsikologi) {
       alert("Untuk tes psikologi, anda harus mengerjakan berurutan.");
       return;
@@ -102,13 +118,15 @@ export default function MesinUjian() {
   };
 
   const simpanJawabanLocal = (pilihan: string) => {
-    const baru = [...jawabanSiswa];
-    baru[indeksAktif] = pilihan;
-    setJawabanSiswa(baru);
+    const idSoal = soal[indeksAktif].id;
+    setJawabanSiswa((prev) => ({
+      ...prev,
+      [idSoal]: pilihan,
+    }));
   };
 
   const selesaiUjianOtomatis = () => {
-    alert("Waktu habis! Jawaban kamu akan disimpan.");
+    alert("Waktu habis! Jawaban kamu akan dikumpulkan otomatis.");
     prosesSelesai();
   };
 
@@ -119,8 +137,8 @@ export default function MesinUjian() {
 
   const prosesSelesai = async () => {
     let jumlahBenar = 0;
-    soal.forEach((s, index) => {
-      if (jawabanSiswa[index] === s.jawaban_benar) {
+    soal.forEach((s) => {
+      if (jawabanSiswa[s.id] === s.jawaban_benar) {
         jumlahBenar++;
       }
     });
@@ -129,9 +147,16 @@ export default function MesinUjian() {
     const skorAkhir =
       totalSoal > 0 ? Math.round((jumlahBenar / totalSoal) * 100) : 0;
 
+    const waktuSelesai = Date.now();
+    const selisihDetik = Math.floor((waktuSelesai - waktuMulai) / 1000);
+    const menit = Math.floor(selisihDetik / 60);
+    const detik = selisihDetik % 60;
+    const teksDurasi = `${menit} Menit ${detik} Detik`;
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
+
     if (user) {
       await supabase.from("hasil_ujian").insert([
         {
@@ -139,6 +164,9 @@ export default function MesinUjian() {
           email_siswa: user.email,
           tes_id: id,
           skor: skorAkhir,
+          tanggal: new Date().toISOString(),
+          durasi: teksDurasi,
+          jawaban_siswa: jawabanSiswa,
         },
       ]);
     }
@@ -152,11 +180,31 @@ export default function MesinUjian() {
     return `${m < 10 ? "0" + m : m}:${s < 10 ? "0" + s : s}`;
   };
 
-  if (loading)
+  // --- RENDERING UI ---
+
+  // Loading Screen
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="w-12 h-12 border-4 border-t-indigo-600 rounded-full animate-spin"></div>
       </div>
+    );
+  }
+
+  // JIKA KATEGORI ADALAH KORAN, TAMPILKAN KOMPONEN TES KORAN
+  if (kategoriTes === "koran") {
+    // Kita lempar id tes dan data lengkapnya agar TesKoran bisa menyimpan ke Supabase nanti
+    return (
+      <div className="min-h-screen bg-slate-50 pt-10">
+        <TesKoran dataTes={dataTesLengkap} tesId={id as string} />
+      </div>
+    );
+  }
+
+  // JIKA BUKAN KORAN, LANJUTKAN KE TAMPILAN PILIHAN GANDA (KODINGAN ASLIMU)
+  if (!soal.length)
+    return (
+      <div className="p-10 text-center font-bold">Soal belum tersedia.</div>
     );
 
   const soalSekarang = soal[indeksAktif];
@@ -206,21 +254,21 @@ export default function MesinUjian() {
                   key={opsi}
                   onClick={() => simpanJawabanLocal(opsi)}
                   className={`group p-6 text-left border rounded-2xl transition-all flex items-start gap-4 ${
-                    jawabanSiswa[indeksAktif] === opsi
+                    jawabanSiswa[soalSekarang.id] === opsi
                       ? "bg-indigo-600 border-indigo-700 text-white font-bold shadow-lg"
                       : "bg-white border-slate-200 text-slate-800 hover:border-indigo-300"
                   }`}
                 >
                   <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center font-black ${
-                      jawabanSiswa[indeksAktif] === opsi
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center font-black flex-shrink-0 ${
+                      jawabanSiswa[soalSekarang.id] === opsi
                         ? "bg-white text-indigo-700"
                         : "bg-indigo-50 text-indigo-600"
                     }`}
                   >
                     {opsi.toUpperCase()}
                   </div>
-                  <div className="flex-1">
+                  <div className="flex-1 mt-1.5">
                     {soalSekarang[`url_opsi_${opsi}`] && (
                       <img
                         src={soalSekarang[`url_opsi_${opsi}`]}
@@ -243,14 +291,14 @@ export default function MesinUjian() {
                 Navigasi Soal
               </h3>
               <div className="grid grid-cols-5 gap-2 mb-6">
-                {soal.map((_, i) => (
+                {soal.map((s, i) => (
                   <button
-                    key={i}
+                    key={s.id}
                     onClick={() => lompatKeSoal(i)}
                     className={`h-10 rounded-lg font-bold text-xs flex items-center justify-center transition-all ${
                       indeksAktif === i
                         ? "ring-4 ring-indigo-200 bg-indigo-600 text-white shadow-md"
-                        : jawabanSiswa[i] !== undefined
+                        : jawabanSiswa[s.id] !== undefined
                           ? "bg-emerald-500 text-white shadow-sm hover:bg-emerald-600"
                           : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                     }`}
@@ -270,10 +318,12 @@ export default function MesinUjian() {
         </div>
       </div>
 
+      {/* FOOTER NAVIGASI */}
       <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-sm border-t border-slate-100 p-4 shadow-lg z-40">
         <div className="max-w-7xl mx-auto flex justify-between items-center px-4">
           <button
             onClick={() => indeksAktif > 0 && setIndeksAktif(indeksAktif - 1)}
+            disabled={indeksAktif === 0}
             className="px-6 py-3 font-bold text-slate-500 hover:text-indigo-600 disabled:opacity-30"
           >
             ← Sebelumnya

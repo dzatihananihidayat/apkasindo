@@ -22,6 +22,9 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [chartData, setChartData] = useState<any[]>([]);
 
+  // STATE BARU UNTUK FILTER GRAFIK
+  const [activeTab, setActiveTab] = useState<string>("Semua");
+
   useEffect(() => {
     const initDashboard = async () => {
       // 1. Cek User Login
@@ -39,7 +42,7 @@ export default function Dashboard() {
       const { data: testList } = await supabase.from("daftar_tes").select("*");
       if (testList) setTests(testList);
 
-      // 3. Ambil Hasil Ujian User (Sesuai kolom database kamu)
+      // 3. Ambil Hasil Ujian User
       const { data: historyData, error: historyError } = await supabase
         .from("hasil_ujian")
         .select("skor, tanggal, tes_id")
@@ -53,7 +56,6 @@ export default function Dashboard() {
       // 4. Format Data untuk Grafik
       if (historyData && testList) {
         const formattedData = historyData.map((item) => {
-          // Cocokkan tes_id dengan id di daftar_tes untuk dapat nama tesnya
           const tesTerkait = testList.find((t) => t.id === item.tes_id);
           const namaTes = tesTerkait
             ? tesTerkait.nama_tes
@@ -61,7 +63,7 @@ export default function Dashboard() {
 
           return {
             namaUjian: namaTes,
-            skor: item.skor, // Menggunakan nama kolom 'skor' dari CSV kamu
+            skor: item.skor,
             tanggal: new Date(item.tanggal).toLocaleDateString("id-ID", {
               day: "numeric",
               month: "short",
@@ -110,6 +112,19 @@ export default function Dashboard() {
     }
     return null;
   };
+
+  // LOGIKA FILTER GRAFIK
+  // 1. Ambil nama-nama tes secara unik dari riwayat siswa
+  const uniqueTabs = [
+    "Semua",
+    ...Array.from(new Set(chartData.map((item) => item.namaUjian))),
+  ];
+
+  // 2. Filter data grafik sesuai tab yang aktif
+  const filteredChartData =
+    activeTab === "Semua"
+      ? chartData
+      : chartData.filter((item) => item.namaUjian === activeTab);
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans selection:bg-indigo-100 selection:text-indigo-900">
@@ -213,61 +228,92 @@ export default function Dashboard() {
 
         {/* SECTION TITLE: GRAFIK HASIL BELAJAR */}
         {chartData.length > 0 && (
-          <>
-            <div className="mb-8 flex items-center gap-3">
-              <div className="h-8 w-2 bg-emerald-500 rounded-full"></div>
-              <h2 className="text-xl font-bold text-slate-700">
-                Grafik Perkembangan Belajarmu
-              </h2>
+          <div className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-100">
+            {/* Header Grafik & Tombol Filter */}
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6">
+              <div className="flex items-center gap-3">
+                <div className="h-8 w-2 bg-emerald-500 rounded-full"></div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-700">
+                    Grafik Perkembangan Belajarmu
+                  </h2>
+                  <p className="text-sm text-slate-500 font-medium mt-1">
+                    Pantau tren nilai kamu berdasarkan jenis ujian
+                  </p>
+                </div>
+              </div>
+
+              {/* TABS FILTER DINAMIS */}
+              <div className="flex flex-wrap gap-2 bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
+                {uniqueTabs.map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${
+                      activeTab === tab
+                        ? "bg-white text-emerald-600 shadow-sm border border-slate-200"
+                        : "text-slate-500 hover:text-slate-800 hover:bg-slate-200/50"
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="bg-white p-6 md:p-8 rounded-3xl shadow-sm border border-slate-100 h-[400px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={chartData}
-                  margin={{ top: 20, right: 20, left: -20, bottom: 0 }}
-                >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    vertical={false}
-                    stroke="#f1f5f9"
-                  />
-                  <XAxis
-                    dataKey="tanggal"
-                    stroke="#94a3b8"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                    dy={10}
-                  />
-                  <YAxis
-                    stroke="#94a3b8"
-                    fontSize={12}
-                    tickLine={false}
-                    axisLine={false}
-                    // Hapus baris domain di bawah ini jika skor kamu bisa lebih dari 100
-                    domain={[0, 100]}
-                  />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Line
-                    type="monotone"
-                    dataKey="skor"
-                    name="Skor"
-                    stroke="#10b981"
-                    strokeWidth={4}
-                    dot={{
-                      fill: "#10b981",
-                      strokeWidth: 2,
-                      r: 5,
-                      stroke: "#fff",
-                    }}
-                    activeDot={{ r: 8, strokeWidth: 0, fill: "#059669" }}
-                    animationDuration={1500}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+            {/* Render Grafik */}
+            <div className="h-[400px] w-full">
+              {filteredChartData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={filteredChartData}
+                    margin={{ top: 20, right: 20, left: -20, bottom: 0 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      vertical={false}
+                      stroke="#f1f5f9"
+                    />
+                    <XAxis
+                      dataKey="tanggal"
+                      stroke="#94a3b8"
+                      fontSize={12}
+                      tickLine={false}
+                      axisLine={false}
+                      dy={10}
+                    />
+                    <YAxis
+                      stroke="#94a3b8"
+                      fontSize={12}
+                      tickLine={false}
+                      axisLine={false}
+                      domain={[0, 100]}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Line
+                      type="monotone"
+                      dataKey="skor"
+                      name="Skor"
+                      stroke="#10b981"
+                      strokeWidth={4}
+                      dot={{
+                        fill: "#10b981",
+                        strokeWidth: 2,
+                        r: 5,
+                        stroke: "#fff",
+                      }}
+                      activeDot={{ r: 8, strokeWidth: 0, fill: "#059669" }}
+                      animationDuration={1500}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-slate-400 font-medium bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                  Belum ada data untuk kategori ini.
+                </div>
+              )}
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>
