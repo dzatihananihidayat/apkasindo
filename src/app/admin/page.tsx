@@ -216,7 +216,7 @@ export default function AdminPage() {
     setUploading(true);
 
     let urlGambar = "";
-    let urlGambarOps = { a: "", b: "", c: "", d: "" };
+    let urlGambarOps = { a: "", b: "", c: "", d: "", e: "", f: "" };
 
     if (fileGambar) {
       const fileName = `${Date.now()}_${fileGambar.name}`;
