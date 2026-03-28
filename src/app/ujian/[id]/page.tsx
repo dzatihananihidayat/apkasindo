@@ -266,7 +266,7 @@ export default function MesinUjian() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {["a", "b", "c", "d"].map((opsi) => {
+              {["a", "b", "c", "d", "e", "f"].map((opsi) => {
                 // Sembunyikan tombol opsi jika tidak ada data opsi teks maupun gambar
                 if (
                   !soalSekarang[`opsi_${opsi}`] &&

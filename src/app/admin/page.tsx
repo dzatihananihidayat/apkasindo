@@ -18,7 +18,14 @@ export default function AdminPage() {
   const [editId, setEditId] = useState<string | null>(null);
   const [selectedTest, setSelectedTest] = useState("");
   const [pertanyaan, setPertanyaan] = useState("");
-  const [jawaban, setJawaban] = useState({ a: "", b: "", c: "", d: "" });
+  const [jawaban, setJawaban] = useState({
+    a: "",
+    b: "",
+    c: "",
+    d: "",
+    e: "",
+    f: "",
+  });
   const [kunci, setKunci] = useState("a");
   const [pembahasan, setPembahasan] = useState("");
   const [fileGambar, setFileGambar] = useState<File | null>(null);
@@ -27,7 +34,9 @@ export default function AdminPage() {
     b: File | null;
     c: File | null;
     d: File | null;
-  }>({ a: null, b: null, c: null, d: null });
+    e: File | null;
+    f: File | null;
+  }>({ a: null, b: null, c: null, d: null, e: null, f: null });
 
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -156,6 +165,8 @@ export default function AdminPage() {
             opsi_b: String(baris.opsi_b || ""),
             opsi_c: String(baris.opsi_c || ""),
             opsi_d: String(baris.opsi_d || ""),
+            opsi_e: String(baris.opsi_e || ""),
+            opsi_f: String(baris.opsi_f || ""),
             jawaban_benar: baris.jawaban_benar
               ? String(baris.jawaban_benar).toLowerCase().trim()
               : "",
@@ -238,6 +249,8 @@ export default function AdminPage() {
       opsi_b: jawaban.b,
       opsi_c: jawaban.c,
       opsi_d: jawaban.d,
+      opsi_e: jawaban.e,
+      opsi_f: jawaban.f,
       jawaban_benar: kunci,
       pembahasan,
     };
@@ -247,6 +260,8 @@ export default function AdminPage() {
     if (urlGambarOps.b) payload.url_opsi_b = urlGambarOps.b;
     if (urlGambarOps.c) payload.url_opsi_c = urlGambarOps.c;
     if (urlGambarOps.d) payload.url_opsi_d = urlGambarOps.d;
+    if (urlGambarOps.e) payload.url_opsi_e = urlGambarOps.e; // Ganti jadi 'e'
+    if (urlGambarOps.f) payload.url_opsi_f = urlGambarOps.f; // Ganti jadi 'f'
 
     if (editId) {
       const { error } = await supabase
@@ -275,6 +290,8 @@ export default function AdminPage() {
       b: soal.opsi_b || "",
       c: soal.opsi_c || "",
       d: soal.opsi_d || "",
+      e: soal.opsi_e || "",
+      f: soal.opsi_f || "",
     });
     setKunci(soal.jawaban_benar);
     setPembahasan(soal.pembahasan || "");
@@ -295,9 +312,9 @@ export default function AdminPage() {
     setEditId(null);
     setPertanyaan("");
     setFileGambar(null);
-    setFileGambarOps({ a: null, b: null, c: null, d: null });
+    setFileGambarOps({ a: null, b: null, c: null, d: null, e: null, f: null });
     setPembahasan("");
-    setJawaban({ a: "", b: "", c: "", d: "" });
+    setJawaban({ a: "", b: "", c: "", d: "", e: "", f: "" });
   };
 
   // ==========================================
@@ -423,8 +440,8 @@ export default function AdminPage() {
         <p className="text-xs font-medium text-indigo-600/70 mt-3 ml-2">
           *Pastikan baris pertama Excel Anda memiliki kolom:{" "}
           <code className="bg-indigo-100 px-1 py-0.5 rounded">
-            pertanyaan, opsi_a, opsi_b, opsi_c, opsi_d, jawaban_benar,
-            url_gambar, url_pembahasan, pembahasan
+            pertanyaan, opsi_a, opsi_b, opsi_c, opsi_d, opsi_e, opsi_f,
+            jawaban_benar, url_gambar, url_pembahasan, pembahasan
           </code>
           .
         </p>
@@ -508,7 +525,7 @@ export default function AdminPage() {
               Opsi Jawaban:
             </h4>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {["a", "b", "c", "d"].map((o) => (
+              {["a", "b", "c", "d", "e", "f"].map((o) => (
                 <div
                   key={o}
                   className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-4"
@@ -524,7 +541,7 @@ export default function AdminPage() {
                   <input
                     type="text"
                     className="w-full p-3 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400"
-                    value={(jawaban as any)[o]}
+                    value={(jawaban as any)[o] || ""}
                     onChange={(e) =>
                       setJawaban({ ...jawaban, [o]: e.target.value })
                     }
@@ -556,7 +573,7 @@ export default function AdminPage() {
                 value={kunci}
                 onChange={(e) => setKunci(e.target.value)}
               >
-                {["a", "b", "c", "d"].map((o) => (
+                {["a", "b", "c", "d", "e", "f"].map((o) => (
                   <option key={o} value={o}>
                     Pilihan {o.toUpperCase()}
                   </option>
@@ -715,6 +732,24 @@ export default function AdminPage() {
                           }
                         >
                           D. {soal.opsi_d || "-"}
+                        </li>
+                        <li
+                          className={
+                            soal.jawaban_benar === "e"
+                              ? "text-emerald-600 font-bold"
+                              : ""
+                          }
+                        >
+                          E. {soal.opsi_e || "-"}
+                        </li>
+                        <li
+                          className={
+                            soal.jawaban_benar === "f"
+                              ? "text-emerald-600 font-bold"
+                              : ""
+                          }
+                        >
+                          F. {soal.opsi_f || "-"}
                         </li>
                       </ul>
                     </td>
