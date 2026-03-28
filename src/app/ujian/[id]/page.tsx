@@ -1,8 +1,8 @@
 "use client";
 import { useState, useEffect } from "react";
-import { createClient } from "@/utils/supabase"; // Pastikan path ini benar
+import { createClient } from "@/utils/supabase";
 import { useParams, useRouter } from "next/navigation";
-import TesKoran from "@/components/TesKoran"; // IMPORT KOMPONEN TES KORAN DI SINI
+import TesKoran from "@/components/TesKoran";
 
 export default function MesinUjian() {
   const { id } = useParams();
@@ -16,16 +16,21 @@ export default function MesinUjian() {
 
   // State untuk Info Tes
   const [namaTes, setNamaTes] = useState("");
-  const [kategoriTes, setKategoriTes] = useState(""); // STATE BARU UNTUK KATEGORI
-  const [dataTesLengkap, setDataTesLengkap] = useState<any>(null); // Untuk dilempar ke TesKoran
+  const [kategoriTes, setKategoriTes] = useState("");
+  const [dataTesLengkap, setDataTesLengkap] = useState<any>(null);
 
   const [loading, setLoading] = useState(true);
   const [waktuMulai, setWaktuMulai] = useState<number>(0);
 
+  // Variabel Penanda Psikotes (Aritmatika / Visual)
+  const isPsikotes =
+    kategoriTes === "aritmatika" ||
+    kategoriTes === "visual" ||
+    namaTes.toLowerCase().includes("psikologi");
+
   // 1. Fetch Data Awal (Soal & Info Tes)
   useEffect(() => {
     const fetchData = async () => {
-      // Ambil Info Tes untuk Timer & Kategori (Tambahkan 'kategori' di select)
       const { data: dataTes } = await supabase
         .from("daftar_tes")
         .select("nama_tes, durasi_menit, kategori")
@@ -34,23 +39,24 @@ export default function MesinUjian() {
 
       if (dataTes) {
         setNamaTes(dataTes.nama_tes);
-        setKategoriTes(dataTes.kategori); // Simpan kategori
-        setDataTesLengkap(dataTes); // Simpan seluruh data tes
+        setKategoriTes(dataTes.kategori);
+        setDataTesLengkap(dataTes);
 
-        // Jika ini tes koran, kita tidak perlu fetch soal pilihan ganda
         if (dataTes.kategori === "koran") {
           setLoading(false);
-          return; // Berhenti di sini, biarkan TesKoran yang menangani sisanya
+          return;
         }
 
-        const isPsikologi = dataTes.nama_tes
-          .toLowerCase()
-          .includes("psikologi");
-        // Jika Psikologi: 60 detik per soal. Jika Umum: Durasi menit * 60.
-        setTimer(isPsikologi ? 60 : (dataTes.durasi_menit || 30) * 60);
+        // Cek mode saat load awal
+        const isModePsikotes =
+          dataTes.kategori === "aritmatika" ||
+          dataTes.kategori === "visual" ||
+          dataTes.nama_tes.toLowerCase().includes("psikologi");
+
+        // Jika Psikotes: 60 detik per soal. Jika Umum: Durasi total menit * 60.
+        setTimer(isModePsikotes ? 60 : (dataTes.durasi_menit || 30) * 60);
       }
 
-      // Ambil Daftar Soal (Hanya jika BUKAN tes koran)
       const { data: dataSoal } = await supabase
         .from("soal")
         .select("*")
@@ -58,33 +64,30 @@ export default function MesinUjian() {
 
       if (dataSoal) setSoal(dataSoal);
 
-      // Catat waktu kapan siswa mulai mengerjakan soal
       setWaktuMulai(Date.now());
       setLoading(false);
     };
     fetchData();
   }, [id, supabase]);
 
-  // 2. Logika Timer Adaptif (Untuk Pilihan Ganda)
+  // 2. Logika Timer Adaptif
   useEffect(() => {
     if (loading || kategoriTes === "koran" || soal.length === 0) return;
 
     const interval = setInterval(() => {
       setTimer((prev) => {
         if (prev <= 1) {
-          const isPsikologi = namaTes.toLowerCase().includes("psikologi");
-
-          if (isPsikologi) {
-            // Mode Psikologi: Otomatis pindah soal saat waktu habis
+          if (isPsikotes) {
+            // Mode Psikotes: Otomatis pindah soal saat waktu 60 detik habis
             if (indeksAktif < soal.length - 1) {
-              setIndeksAktif(indeksAktif + 1);
-              return 60;
+              setIndeksAktif((idx) => idx + 1);
+              return 60; // Reset ke 60 detik untuk soal baru
             } else {
               selesaiUjianOtomatis();
               return 0;
             }
           } else {
-            // Mode Sawit/Umum: Waktu total habis
+            // Mode Sawit/Umum: Waktu total keseluruhan habis
             selesaiUjianOtomatis();
             return 0;
           }
@@ -94,14 +97,14 @@ export default function MesinUjian() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [indeksAktif, loading, soal, namaTes, kategoriTes]);
+  }, [indeksAktif, loading, soal, isPsikotes, kategoriTes]);
 
-  // 3. Fungsi Navigasi & Simpan (Untuk Pilihan Ganda)
+  // 3. Fungsi Navigasi & Simpan
   const handleNextSoal = () => {
     if (indeksAktif < soal.length - 1) {
       setIndeksAktif(indeksAktif + 1);
-      if (namaTes.toLowerCase().includes("psikologi")) {
-        setTimer(60);
+      if (isPsikotes) {
+        setTimer(60); // Reset timer per soal jika ditekan manual
       }
     } else {
       selesaiUjian();
@@ -109,9 +112,8 @@ export default function MesinUjian() {
   };
 
   const lompatKeSoal = (indeks: number) => {
-    const isPsikologi = namaTes.toLowerCase().includes("psikologi");
-    if (isPsikologi) {
-      alert("Untuk tes psikologi, anda harus mengerjakan berurutan.");
+    if (isPsikotes) {
+      alert("Pada sesi tes ini, Anda harus mengerjakan secara berurutan!");
       return;
     }
     setIndeksAktif(indeks);
@@ -158,7 +160,7 @@ export default function MesinUjian() {
     } = await supabase.auth.getUser();
 
     if (user) {
-      await supabase.from("hasil_ujian").insert([
+      const { error } = await supabase.from("hasil_ujian").insert([
         {
           user_id: user.id,
           email_siswa: user.email,
@@ -169,6 +171,12 @@ export default function MesinUjian() {
           jawaban_siswa: jawabanSiswa,
         },
       ]);
+
+      if (error) {
+        console.error("Gagal simpan ke Supabase:", error);
+        alert(`Waduh, gagal menyimpan data! Error: ${error.message}`);
+        return;
+      }
     }
 
     router.push(`/hasil/${id}`);
@@ -182,7 +190,6 @@ export default function MesinUjian() {
 
   // --- RENDERING UI ---
 
-  // Loading Screen
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -191,9 +198,7 @@ export default function MesinUjian() {
     );
   }
 
-  // JIKA KATEGORI ADALAH KORAN, TAMPILKAN KOMPONEN TES KORAN
   if (kategoriTes === "koran") {
-    // Kita lempar id tes dan data lengkapnya agar TesKoran bisa menyimpan ke Supabase nanti
     return (
       <div className="min-h-screen bg-slate-50 pt-10">
         <TesKoran dataTes={dataTesLengkap} tesId={id as string} />
@@ -201,7 +206,6 @@ export default function MesinUjian() {
     );
   }
 
-  // JIKA BUKAN KORAN, LANJUTKAN KE TAMPILAN PILIHAN GANDA (KODINGAN ASLIMU)
   if (!soal.length)
     return (
       <div className="p-10 text-center font-bold">Soal belum tersedia.</div>
@@ -221,20 +225,31 @@ export default function MesinUjian() {
         </div>
         <div className="flex items-center gap-3 bg-indigo-600/20 px-5 py-2.5 rounded-2xl border border-indigo-500/30">
           <span className="text-indigo-300 text-sm font-bold uppercase tracking-widest">
-            {namaTes.toLowerCase().includes("psikologi")
-              ? "Per Soal"
-              : "Sisa Waktu"}
+            {isPsikotes ? "Sisa Waktu Soal" : "Sisa Waktu Total"}
           </span>
-          <div className="font-mono font-black text-2xl text-white">
+          <div
+            className={`font-mono font-black text-2xl ${
+              isPsikotes && timer <= 10
+                ? "text-rose-400 animate-pulse"
+                : "text-white"
+            }`}
+          >
             {formatWaktu(timer)}
           </div>
         </div>
       </div>
 
       <div className="p-6 md:p-10 max-w-7xl mx-auto">
+        {/* LOGIKA GRID: Jika Psikotes, Area Soal full lebar (col-span-4). Jika tidak, sisakan 1 kolom untuk navigasi */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* AREA KIRI: SOAL */}
-          <div className="lg:col-span-3 space-y-8">
+          <div
+            className={
+              isPsikotes
+                ? "lg:col-span-4 space-y-8 max-w-5xl mx-auto w-full"
+                : "lg:col-span-3 space-y-8"
+            }
+          >
             <div className="bg-white p-8 md:p-10 rounded-3xl shadow-xl border border-slate-100">
               {soalSekarang.url_gambar && (
                 <img
@@ -243,91 +258,112 @@ export default function MesinUjian() {
                   className="mb-8 max-h-72 mx-auto rounded-2xl shadow-md"
                 />
               )}
-              <p className="text-xl md:text-2xl font-bold text-slate-800 leading-relaxed">
-                {soalSekarang.pertanyaan}
-              </p>
+              {soalSekarang.pertanyaan && (
+                <p className="text-xl md:text-2xl font-bold text-slate-800 leading-relaxed text-center">
+                  {soalSekarang.pertanyaan}
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {["a", "b", "c", "d"].map((opsi) => (
-                <button
-                  key={opsi}
-                  onClick={() => simpanJawabanLocal(opsi)}
-                  className={`group p-6 text-left border rounded-2xl transition-all flex items-start gap-4 ${
-                    jawabanSiswa[soalSekarang.id] === opsi
-                      ? "bg-indigo-600 border-indigo-700 text-white font-bold shadow-lg"
-                      : "bg-white border-slate-200 text-slate-800 hover:border-indigo-300"
-                  }`}
-                >
-                  <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center font-black flex-shrink-0 ${
+              {["a", "b", "c", "d"].map((opsi) => {
+                // Sembunyikan tombol opsi jika tidak ada data opsi teks maupun gambar
+                if (
+                  !soalSekarang[`opsi_${opsi}`] &&
+                  !soalSekarang[`url_opsi_${opsi}`]
+                )
+                  return null;
+
+                return (
+                  <button
+                    key={opsi}
+                    onClick={() => simpanJawabanLocal(opsi)}
+                    className={`group p-6 text-left border rounded-2xl transition-all flex items-start gap-4 ${
                       jawabanSiswa[soalSekarang.id] === opsi
-                        ? "bg-white text-indigo-700"
-                        : "bg-indigo-50 text-indigo-600"
+                        ? "bg-indigo-600 border-indigo-700 text-white font-bold shadow-lg"
+                        : "bg-white border-slate-200 text-slate-800 hover:border-indigo-300"
                     }`}
                   >
-                    {opsi.toUpperCase()}
-                  </div>
-                  <div className="flex-1 mt-1.5">
-                    {soalSekarang[`url_opsi_${opsi}`] && (
-                      <img
-                        src={soalSekarang[`url_opsi_${opsi}`]}
-                        className="max-h-40 mb-2 rounded-lg"
-                      />
-                    )}
-                    <span className="text-lg">
-                      {soalSekarang[`opsi_${opsi}`]}
-                    </span>
-                  </div>
-                </button>
-              ))}
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center font-black flex-shrink-0 ${
+                        jawabanSiswa[soalSekarang.id] === opsi
+                          ? "bg-white text-indigo-700"
+                          : "bg-indigo-50 text-indigo-600"
+                      }`}
+                    >
+                      {opsi.toUpperCase()}
+                    </div>
+                    <div className="flex-1 mt-1.5">
+                      {soalSekarang[`url_opsi_${opsi}`] && (
+                        <img
+                          src={soalSekarang[`url_opsi_${opsi}`]}
+                          className="max-h-40 mb-2 rounded-lg"
+                        />
+                      )}
+                      {soalSekarang[`opsi_${opsi}`] && (
+                        <span className="text-lg">
+                          {soalSekarang[`opsi_${opsi}`]}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* AREA KANAN: NAVIGASI */}
-          <div className="lg:col-span-1">
-            <div className="bg-white p-6 rounded-3xl shadow-xl border border-slate-100 sticky top-28">
-              <h3 className="text-lg font-bold text-slate-800 mb-4 border-b pb-3">
-                Navigasi Soal
-              </h3>
-              <div className="grid grid-cols-5 gap-2 mb-6">
-                {soal.map((s, i) => (
-                  <button
-                    key={s.id}
-                    onClick={() => lompatKeSoal(i)}
-                    className={`h-10 rounded-lg font-bold text-xs flex items-center justify-center transition-all ${
-                      indeksAktif === i
-                        ? "ring-4 ring-indigo-200 bg-indigo-600 text-white shadow-md"
-                        : jawabanSiswa[s.id] !== undefined
-                          ? "bg-emerald-500 text-white shadow-sm hover:bg-emerald-600"
-                          : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                    }`}
-                  >
-                    {i + 1}
-                  </button>
-                ))}
+          {/* AREA KANAN: NAVIGASI (DISEMBUNYIKAN JIKA MODE PSIKOTES) */}
+          {!isPsikotes && (
+            <div className="lg:col-span-1">
+              <div className="bg-white p-6 rounded-3xl shadow-xl border border-slate-100 sticky top-28">
+                <h3 className="text-lg font-bold text-slate-800 mb-4 border-b pb-3">
+                  Navigasi Soal
+                </h3>
+                <div className="grid grid-cols-5 gap-2 mb-6">
+                  {soal.map((s, i) => (
+                    <button
+                      key={s.id}
+                      onClick={() => lompatKeSoal(i)}
+                      className={`h-10 rounded-lg font-bold text-xs flex items-center justify-center transition-all ${
+                        indeksAktif === i
+                          ? "ring-4 ring-indigo-200 bg-indigo-600 text-white shadow-md"
+                          : jawabanSiswa[s.id] !== undefined
+                            ? "bg-emerald-500 text-white shadow-sm hover:bg-emerald-600"
+                            : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                      }`}
+                    >
+                      {i + 1}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={selesaiUjian}
+                  className="w-full bg-rose-500 text-white py-3 rounded-xl font-bold hover:bg-rose-600 transition-all shadow-md shadow-rose-200"
+                >
+                  Akhiri Ujian
+                </button>
               </div>
-              <button
-                onClick={selesaiUjian}
-                className="w-full bg-rose-500 text-white py-3 rounded-xl font-bold hover:bg-rose-600 transition-all shadow-md shadow-rose-200"
-              >
-                Akhiri Ujian
-              </button>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
       {/* FOOTER NAVIGASI */}
       <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-sm border-t border-slate-100 p-4 shadow-lg z-40">
         <div className="max-w-7xl mx-auto flex justify-between items-center px-4">
-          <button
-            onClick={() => indeksAktif > 0 && setIndeksAktif(indeksAktif - 1)}
-            disabled={indeksAktif === 0}
-            className="px-6 py-3 font-bold text-slate-500 hover:text-indigo-600 disabled:opacity-30"
-          >
-            ← Sebelumnya
-          </button>
+          {/* TOMBOL SEBELUMNYA DISEMBUNYIKAN JIKA MODE PSIKOTES */}
+          {!isPsikotes ? (
+            <button
+              onClick={() => indeksAktif > 0 && setIndeksAktif(indeksAktif - 1)}
+              disabled={indeksAktif === 0}
+              className="px-6 py-3 font-bold text-slate-500 hover:text-indigo-600 disabled:opacity-30"
+            >
+              ← Sebelumnya
+            </button>
+          ) : (
+            <div></div> // Div kosong sebagai pengisi jarak agar tombol Selanjutnya tetap di kanan
+          )}
+
           <button
             onClick={handleNextSoal}
             className="flex items-center gap-2 bg-indigo-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-indigo-700 shadow-md"
