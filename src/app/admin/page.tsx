@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/utils/supabase";
 import { useRouter } from "next/navigation";
+import Papa from "papaparse"; // IMPORT PAPAPARSE UNTUK BACA CSV
 
 export default function AdminPage() {
   const supabase = createClient();
@@ -31,8 +32,12 @@ export default function AdminPage() {
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // States Khusus Upload CSV
+  const [selectedTestCsv, setSelectedTestCsv] = useState("");
+  const [uploadingCsv, setUploadingCsv] = useState(false);
+
   // ==========================================
-  // STATES UNTUK FILTER & PAGINATION (BARU)
+  // STATES UNTUK FILTER & PAGINATION
   // ==========================================
   const ITEMS_PER_PAGE = 10;
 
@@ -100,7 +105,6 @@ export default function AdminPage() {
         const t = dataTes.find((x) => x.id === s.tes_id);
         return { ...s, nama_tes: t ? t.nama_tes : "Unknown" };
       });
-      // Urutkan manual (karena tanpa .order dari supabase)
       const sortedSoal = formattedSoal.sort(
         (a, b) =>
           new Date(b.created_at || 0).getTime() -
@@ -113,7 +117,87 @@ export default function AdminPage() {
   };
 
   // ==========================================
-  // FUNGSI SIMPAN, EDIT, HAPUS SOAL
+  // FUNGSI UPLOAD CSV (DIPERBAIKI)
+  // ==========================================
+  const handleUploadCsv = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!selectedTestCsv) {
+      alert(
+        "⚠️ Silakan pilih kategori tes terlebih dahulu sebelum memilih file CSV!",
+      );
+      event.target.value = ""; // Reset input file
+      return;
+    }
+
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith(".csv")) {
+      alert("Tolong upload file dengan format CSV!");
+      event.target.value = "";
+      return;
+    }
+
+    setUploadingCsv(true);
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        const dataCsv = results.data;
+
+        // Pemetaan data CSV ke format database secara sangat AMAN
+        const dataSiapInsert = dataCsv.map((baris: any) => {
+          // Buat format baris dasar (pasti ada)
+          const row: any = {
+            tes_id: selectedTestCsv,
+            pertanyaan: baris.pertanyaan || "",
+            // Gunakan String() agar jika admin mengetik angka 10 di excel, otomatis jadi teks "10"
+            opsi_a: String(baris.opsi_a || ""),
+            opsi_b: String(baris.opsi_b || ""),
+            opsi_c: String(baris.opsi_c || ""),
+            opsi_d: String(baris.opsi_d || ""),
+            jawaban_benar: baris.jawaban_benar
+              ? String(baris.jawaban_benar).toLowerCase().trim()
+              : "",
+            pembahasan: baris.pembahasan || "",
+          };
+
+          // HANYA kirim url_gambar jika memang kolomnya diisi di Excel
+          if (baris.url_gambar && baris.url_gambar.trim() !== "") {
+            row.url_gambar = baris.url_gambar.trim();
+          }
+
+          return row;
+        });
+
+        // Tembakkan ke Supabase
+        const { error } = await supabase.from("soal").insert(dataSiapInsert);
+
+        if (error) {
+          // Log lebih detail untuk menangkap error jika Supabase masih menolak
+          console.error("Gagal Upload CSV. Detail Error Supabase:", error);
+          alert(
+            `Gagal menyimpan soal! Error: ${error.message || JSON.stringify(error)}`,
+          );
+        } else {
+          alert(`🎉 Sukses! ${dataSiapInsert.length} soal berhasil diunggah.`);
+          fetchData(); // Refresh tabel bank soal otomatis
+        }
+
+        setUploadingCsv(false);
+        event.target.value = ""; // Reset input
+      },
+      error: (error) => {
+        console.error("Error baca CSV dari PapaParse:", error);
+        alert("Gagal membaca file CSV. Pastikan formatnya benar.");
+        setUploadingCsv(false);
+        event.target.value = "";
+      },
+    });
+  };
+
+  // ==========================================
+  // FUNGSI SIMPAN, EDIT, HAPUS SOAL (MANUAL)
   // ==========================================
   const handleSimpanSoal = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -220,7 +304,6 @@ export default function AdminPage() {
   // LOGIKA FILTER & PAGINATION DATA
   // ==========================================
 
-  // 1. Pemrosesan Data Bank Soal
   const filteredSoal = daftarSoal.filter((soal) => {
     const matchSearch = soal.pertanyaan
       ?.toLowerCase()
@@ -234,18 +317,16 @@ export default function AdminPage() {
     currentPageSoal * ITEMS_PER_PAGE,
   );
 
-  // 2. Pemrosesan Data Rekap Nilai
   const filteredNilai = rekapNilai.filter((nilai) => {
     const matchEmail = (nilai.email_siswa || "")
       .toLowerCase()
       .includes(searchEmail.toLowerCase());
     const matchTes = filterTesNilai ? nilai.tes_id === filterTesNilai : true;
 
-    // Logika Rentang Tanggal
     let matchDate = true;
     if (startDate || endDate) {
       const nDate = new Date(nilai.tanggal);
-      nDate.setHours(0, 0, 0, 0); // Normalisasi jam untuk perbandingan akurat
+      nDate.setHours(0, 0, 0, 0);
 
       if (startDate) {
         const sDate = new Date(startDate);
@@ -293,7 +374,63 @@ export default function AdminPage() {
         </button>
       </div>
 
-      {/* 1. FORM TAMBAH / EDIT SOAL */}
+      {/* 0. FORM UPLOAD CSV (BARU) */}
+      <div className="max-w-7xl mx-auto bg-indigo-50 p-6 md:p-8 rounded-3xl shadow-sm border border-indigo-100">
+        <h2 className="text-xl font-bold text-indigo-900 mb-4 flex items-center gap-2">
+          <span>🚀</span> Upload Soal Massal via Excel/CSV
+        </h2>
+        <div className="flex flex-col lg:flex-row gap-4 items-center bg-white p-5 rounded-2xl border border-indigo-100 shadow-sm">
+          {/* Pilih Tes untuk CSV */}
+          <div className="w-full lg:w-1/3">
+            <select
+              className="w-full p-3.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-100 text-slate-900 font-medium"
+              value={selectedTestCsv}
+              onChange={(e) => setSelectedTestCsv(e.target.value)}
+            >
+              <option value="">-- 1. Pilih Kategori Tes --</option>
+              {tests.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.nama_tes}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Tombol Upload File */}
+          <div className="w-full lg:flex-1">
+            <label
+              className={`flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-bold cursor-pointer transition-all border-2 border-dashed ${
+                uploadingCsv
+                  ? "bg-slate-100 text-slate-400 border-slate-300 cursor-not-allowed"
+                  : selectedTestCsv
+                    ? "bg-indigo-50 text-indigo-600 border-indigo-300 hover:bg-indigo-100 hover:border-indigo-400"
+                    : "bg-slate-50 text-slate-400 border-slate-200 cursor-not-allowed"
+              }`}
+            >
+              {uploadingCsv
+                ? "⏳ Memproses CSV..."
+                : "📁 2. Pilih File CSV & Unggah"}
+              <input
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={handleUploadCsv}
+                disabled={uploadingCsv || !selectedTestCsv}
+              />
+            </label>
+          </div>
+        </div>
+        <p className="text-xs font-medium text-indigo-600/70 mt-3 ml-2">
+          *Pastikan baris pertama Excel Anda memiliki kolom:{" "}
+          <code className="bg-indigo-100 px-1 py-0.5 rounded">
+            pertanyaan, opsi_a, opsi_b, opsi_c, opsi_d, jawaban_benar,
+            url_gambar, url_pembahasan, pembahasan
+          </code>
+          .
+        </p>
+      </div>
+
+      {/* 1. FORM TAMBAH / EDIT SOAL (MANUAL) */}
       <div
         ref={formRef}
         className={`max-w-7xl mx-auto bg-white p-8 md:p-10 rounded-3xl shadow-xl border-2 transition-all ${editId ? "border-amber-300 shadow-amber-100" : "border-slate-100 shadow-slate-100"}`}
@@ -306,7 +443,7 @@ export default function AdminPage() {
               {editId ? "✏️" : "➕"}
             </div>
             <h2 className="text-2xl font-bold text-slate-800">
-              {editId ? "Edit Pertanyaan" : "Tambah Pertanyaan Baru"}
+              {editId ? "Edit Pertanyaan Manual" : "Tambah Pertanyaan Manual"}
             </h2>
           </div>
           {editId && (
@@ -320,7 +457,6 @@ export default function AdminPage() {
         </div>
 
         <form onSubmit={handleSimpanSoal} className="space-y-6">
-          {/* (Bagian form input soal dibiarkan utuh karena sudah sempurna) */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">
@@ -363,7 +499,7 @@ export default function AdminPage() {
               value={pertanyaan}
               onChange={(e) => setPertanyaan(e.target.value)}
               placeholder="Tulis soal di sini..."
-              required
+              required={!fileGambar} // Soal boleh kosong asal ada gambarnya (misal untuk visual)
             />
           </div>
 
@@ -455,7 +591,7 @@ export default function AdminPage() {
         </form>
       </div>
 
-      {/* 2. DATABASE BANK SOAL (DENGAN FILTER & PAGINATION) */}
+      {/* 2. DATABASE BANK SOAL */}
       <div className="max-w-7xl mx-auto bg-white p-6 md:p-10 rounded-3xl shadow-sm border border-slate-100">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between mb-8 border-b border-slate-100 pb-6 gap-6">
           <div className="flex items-center gap-3">
@@ -527,7 +663,6 @@ export default function AdminPage() {
                     key={soal.id}
                     className="hover:bg-slate-50/80 border-b border-slate-100 last:border-0 transition-colors"
                   >
-                    {/* Nomor Urut menyesuaikan halaman */}
                     <td className="p-4 text-center text-slate-400 font-bold">
                       {(currentPageSoal - 1) * ITEMS_PER_PAGE + index + 1}
                     </td>
@@ -536,7 +671,11 @@ export default function AdminPage() {
                         {soal.nama_tes}
                       </span>
                       <p className="text-sm font-semibold text-slate-800 leading-relaxed mb-2">
-                        {soal.pertanyaan}
+                        {soal.pertanyaan || (
+                          <span className="italic text-slate-400">
+                            [Gambar Soal Visual]
+                          </span>
+                        )}
                       </p>
                     </td>
                     <td className="p-4 align-top">
@@ -644,7 +783,7 @@ export default function AdminPage() {
         )}
       </div>
 
-      {/* 3. TABEL REKAP NILAI (DENGAN FILTER TANGGAL & PAGINATION) */}
+      {/* 3. TABEL REKAP NILAI */}
       <div className="max-w-7xl mx-auto bg-white p-6 md:p-10 rounded-3xl shadow-sm border border-slate-100">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between mb-8 border-b border-slate-100 pb-6 gap-6">
           <div className="flex items-center gap-3">
@@ -662,7 +801,6 @@ export default function AdminPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full lg:w-auto">
-            {/* Cari Email */}
             <input
               type="text"
               placeholder="🔍 Cari email siswa..."
@@ -670,7 +808,6 @@ export default function AdminPage() {
               onChange={(e) => setSearchEmail(e.target.value)}
               className="px-4 py-2.5 placeholder:text-slate-400 text-slate-900 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-100 outline-none"
             />
-            {/* Filter Tes */}
             <select
               value={filterTesNilai}
               onChange={(e) => setFilterTesNilai(e.target.value)}
@@ -683,7 +820,6 @@ export default function AdminPage() {
                 </option>
               ))}
             </select>
-            {/* Mulai Tanggal */}
             <input
               type="date"
               value={startDate}
@@ -691,7 +827,6 @@ export default function AdminPage() {
               className="px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-600 outline-none"
               title="Dari Tanggal"
             />
-            {/* Sampai Tanggal */}
             <input
               type="date"
               value={endDate}
@@ -754,7 +889,6 @@ export default function AdminPage() {
           </table>
         </div>
 
-        {/* PAGINATION NILAI */}
         {totalPagesNilai > 1 && (
           <div className="flex items-center justify-between bg-white border border-slate-100 p-4 rounded-xl">
             <button
